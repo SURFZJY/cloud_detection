@@ -100,62 +100,58 @@ if __name__ == "__main__":
     test_size_ratio=0.20
     # Validation folds number
     # There is some problem with the validation method, so set it False
-    validation_switch = True
+    validation_switch = False
     n_folds = 5
 
     # epoch of each iteration
-    nb_epoch = 20
+    nb_epoch = 3
+
+    test_sum_score = 0.0
     
     cot = 1
+        
+    # Repeat the experiment n times
+    n_times = 5
     
-    while(cot <= 50):
+    while(cot <= n_times):
         train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=test_size_ratio)
         train_labels = np_utils.to_categorical(train_labels, nb_classes=5)
         test_labels = np_utils.to_categorical(test_labels, nb_classes=5)
 
         model = conv_model(loss='categorical_crossentropy', 
                            optimizer='rmsprop', metrics=['accuracy'])
-        # Log file name
-        sum_score = 0.0
 
         if validation_switch:
             val_cot = 1
             kf = KFold(train_data.shape[0], n_folds)
+            
             for train_index, val_index in kf:
                 X_train, X_val = train_data[train_index], train_data[val_index]
                 y_train, y_val = train_labels[train_index], train_labels[val_index]
-                validation_set = (X_val, y_val)
                 csv_logger = CSVLogger('epoch' + str(nb_epoch) + '_' + str(cot) + '_val_' + str(val_cot) + '.csv')
                 val_cot += 1
                 model.fit(X_train, y_train,
-                      nb_epoch=nb_epoch, batch_size=16,
-                      verbose=1, 
-                      validation_data=validation_set,
-                      callbacks=[csv_logger])
-                score = model.evaluate(test_data, test_labels, verbose=0)
-                print('Test accuracy:', score[1])
-                sum_score += score[1]
-                with open('H:/surfzjy/cloud_detection/epoch'+str(nb_epoch)+'.txt', 'a+') as f:
-                    f.write('Round ' + str(cot) +':  ' + 'Test accuracy: ' + str(score[1]))
-                    f.write('\n')
-        else:
-            X_train = train_data
-            y_train = train_labels
-            validation_set = None
-            csv_logger = CSVLogger('epoch' + str(nb_epoch) + '_' + str(cot) + '.csv')
-            model.fit(X_train, y_train,
+                          nb_epoch=nb_epoch, batch_size=16,
+                          verbose=1, 
+                          validation_data=(X_val, y_val),
+                          callbacks=[csv_logger])  
+
+        csv_logger = CSVLogger('epoch' + str(nb_epoch) + '_' + str(cot) + '.csv')
+            
+        model.fit(train_data, train_labels,
                   nb_epoch=nb_epoch, batch_size=16,
                   verbose=1, 
-                  validation_data=validation_set,
+                  validation_data=None,
                   callbacks=[csv_logger])
-            score = model.evaluate(test_data, test_labels, verbose=0)
-            print('Test accuracy:', score[1])
-            sum_score += score[1]
-            with open('H:/surfzjy/cloud_detection/epoch'+str(nb_epoch)+'.txt', 'a+') as f:
-                f.write('Round ' + str(cot) +':  ' + 'Test accuracy: ' + str(score[1]))
-                f.write('\n')
-        avg_score = sum_score / nb_epoch
+        score = model.evaluate(test_data, test_labels, verbose=0)
+        print('Test accuracy:', score[1])
+        test_sum_score += score[1]
         with open('H:/surfzjy/cloud_detection/epoch'+str(nb_epoch)+'.txt', 'a+') as f:
-            f.write('Round ' + str(cot) +' ' +'Average test accuracy: ' + avg_score)
+            f.write('Round ' + str(cot) + ': Test accuracy: ' + str(score[1]))
+            f.write('\n')                 
+            
         cot += 1
+    test_ave_score = test_sum_score / n_times
+    with open('H:/surfzjy/cloud_detection/epoch'+str(nb_epoch)+'.txt', 'a+') as f:
+        f.write("Average Test Accuracy : " + str(test_ave_score))
     f.close()
