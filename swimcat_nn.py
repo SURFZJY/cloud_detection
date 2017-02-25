@@ -6,44 +6,44 @@ from keras.callbacks import CSVLogger
 from keras.utils import np_utils
 from keras.utils.visualize_util import plot
 from sklearn.cross_validation import train_test_split, cross_val_score, KFold
+from prettytable import PrettyTable
 import numpy as np
 import os 
 
-def generate_data(path, norm=False):
-    """Load image data from the root directory.
-    
-    Load image data from the root directory and convert it 
-    to numpy array format, automatically generate data and 
-    its corresponding labels.
-    
-    # Parameters
-        path : str
-            path of the data directory
-        norm : boolean
-            image pixel data divided by 255 or not,
-            default value is False.
-            (in some experiment, I found normalization can make results better)
-            
-    # Returns
-        numpy array tuple: (data, labels)
-    """
+def generate_data(path):
     files = os.listdir(path)
     data = []
     labels = []
-    for i in range(len(files)):
-        sub_path = data_path + '\\' + files[i]  
+    nb_classes = len(files)
+    class_name = []
+    class_list = []
+    
+    for i in range(nb_classes):
+        sub_path = path + '\\' + files[i]  
         pics = os.listdir(sub_path)
         nb_pics = len(pics)
+        file_name = files[i]
+        class_name.append(file_name)
+        class_list.append(nb_pics)
         for j in range(nb_pics):
             img_path = sub_path + '\\' + pics[j]
             img = load_img(img_path)
             x = img_to_array(img)
             data.append(x)
             labels.append(i)
+    
     data = np.array(data)
     labels = np.array(labels)
-    if norm:
-        data /= 255
+    print(sum(class_list), "samples in", nb_classes, "categories")
+    print("The shape of each sample is", x.shape)
+    table = PrettyTable(["Class_name", "Samples_number", "Label"])
+    table.align["Class_name"] = "l"
+    table.padding_width = 1
+    for i in range(nb_classes):
+        table.add_row([class_name[i], class_list[i], i])
+    print(table)
+    print("Generated data_size is", data.shape)
+    print("Generated labels_size is", labels.shape)
     return data, labels
 
 def conv_model(loss='categorical_crossentropy', optimizer='rmsprop',metrics=['accuracy']):
@@ -94,16 +94,20 @@ def conv_model(loss='categorical_crossentropy', optimizer='rmsprop',metrics=['ac
         
 if __name__ == "__main__":
     data_path = "H:\surfzjy\workspace\keras_study\practise\swimcat_data"
-    data, labels = generate_data(data_path, norm=True)
-    
+    data, labels = generate_data(data_path)
+    data /= 255
     # Testing data ratio
     test_size_ratio=0.20
     # Validation folds number
     # There is some problem with the validation method, so set it False
-    validation_switch = False
+    validation_switch = True
     n_folds = 5
 
+    # epoch of each iteration
+    nb_epoch = 20
+    
     cot = 1
+    
     while(cot <= 50):
         train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=test_size_ratio)
         train_labels = np_utils.to_categorical(train_labels, nb_classes=5)
@@ -112,27 +116,46 @@ if __name__ == "__main__":
         model = conv_model(loss='categorical_crossentropy', 
                            optimizer='rmsprop', metrics=['accuracy'])
         # Log file name
-        csv_logger = CSVLogger('epoch100_'+str(cot)+'.csv')
+        sum_score = 0.0
+
         if validation_switch:
-            kf = KFold(n, n_folds)
+            val_cot = 1
+            kf = KFold(train_data.shape[0], n_folds)
             for train_index, val_index in kf:
                 X_train, X_val = train_data[train_index], train_data[val_index]
                 y_train, y_val = train_labels[train_index], train_labels[val_index]
-            validation_set = (X_val, y_val)
+                validation_set = (X_val, y_val)
+                csv_logger = CSVLogger('epoch' + str(nb_epoch) + '_' + str(cot) + '_val_' + str(val_cot) + '.csv')
+                val_cot += 1
+                model.fit(X_train, y_train,
+                      nb_epoch=nb_epoch, batch_size=16,
+                      verbose=1, 
+                      validation_data=validation_set,
+                      callbacks=[csv_logger])
+                score = model.evaluate(test_data, test_labels, verbose=0)
+                print('Test accuracy:', score[1])
+                sum_score += score[1]
+                with open('H:/surfzjy/cloud_detection/epoch'+str(nb_epoch)+'.txt', 'a+') as f:
+                    f.write('Round ' + str(cot) +':  ' + 'Test accuracy: ' + str(score[1]))
+                    f.write('\n')
         else:
             X_train = train_data
             y_train = train_labels
             validation_set = None
-    
-        model.fit(X_train, y_train,
-              nb_epoch=100, batch_size=16,
-              verbose=1, 
-              validation_data=validation_set,
-              callbacks=[csv_logger])
-        score = model.evaluate(test_data, test_labels, verbose=0)
-        print('Test accuracy:', score[1])
-        with open('H:/surfzjy/workspace/keras_study/practise/epoch100.txt', 'a+') as f:
-            f.write('Round ' + str(cot) +':  ' + 'Test accuracy: ' + str(score[1]))
-            f.write('\n')
+            csv_logger = CSVLogger('epoch' + str(nb_epoch) + '_' + str(cot) + '.csv')
+            model.fit(X_train, y_train,
+                  nb_epoch=nb_epoch, batch_size=16,
+                  verbose=1, 
+                  validation_data=validation_set,
+                  callbacks=[csv_logger])
+            score = model.evaluate(test_data, test_labels, verbose=0)
+            print('Test accuracy:', score[1])
+            sum_score += score[1]
+            with open('H:/surfzjy/cloud_detection/epoch'+str(nb_epoch)+'.txt', 'a+') as f:
+                f.write('Round ' + str(cot) +':  ' + 'Test accuracy: ' + str(score[1]))
+                f.write('\n')
+        avg_score = sum_score / nb_epoch
+        with open('H:/surfzjy/cloud_detection/epoch'+str(nb_epoch)+'.txt', 'a+') as f:
+            f.write('Round ' + str(cot) +' ' +'Average test accuracy: ' + avg_score)
         cot += 1
     f.close()
